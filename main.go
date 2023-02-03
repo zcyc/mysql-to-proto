@@ -11,105 +11,39 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-var typeArr = map[string]string{
-	"int":       "int32",
-	"tinyint":   "int32",
-	"smallint":  "int32",
-	"mediumint": "int32",
-	"enum":      "int32",
-	"bigint":    "int64",
-	"varchar":   "string",
-	"timestamp": "string",
-	"date":      "string",
-	"text":      "string",
-	"double":    "double",
-	"decimal":   "double",
-	"float":     "float",
-	"datetime":  "datetime",
-	"blob":      "blob",
-}
-
-type Table struct {
-	PackageModels string
-	ServiceName   string
-	Method        map[string]MethodDetail
-	Comment       map[string]string
-	Name          map[string][]Column
-	Message       map[string]Detail
-}
-
-type MethodDetail struct {
-	Request  Detail
-	Response Detail
-}
-type Column struct {
-	Field   string
-	Type    string
-	Comment string
-}
-
-type RpcServers struct {
-	Models      string
-	Name        string
-	Funcs       []FuncParam
-	MessageList []Message
-}
-
-type FuncParam struct {
-	Name         string
-	RequestName  string
-	ResponseName string
-}
-
-type Message struct {
-	Name          string
-	MessageDetail []Field
-}
-
-type Field struct {
-	TypeName string
-	AttrName string
-	Num      int
-	Comment  string
-}
-
-type Detail struct {
-	Name string
-	Cat  string
-	Attr []AttrDetail
-}
-
-type AttrDetail struct {
-	TypeName string
-	AttrName string
-}
-
 func main() {
 	// 模板文件路径
 	tpl := "./template/proto.go.tpl"
+
+	// 要生成的数据库
+	dbName := "social"
+
 	// 生成文件路径
-	file := "./template/article.proto"
-	// 数据库名
-	dbName := "can_i_eat"
-	// 数据库配置
-	db, err := Connect("mysql", "root:123456@tcp(127.0.0.1:3306)/"+dbName+"?charset=utf8mb4&parseTime=true")
-	// 不需要生成的表
-	exclude := map[string]int{"log": 1}
-	if err != nil {
-		fmt.Println(err)
-	}
+	file := "./template/" + dbName + ".proto"
 	if IsFile(file) {
 		fmt.Print("proto file already exist")
 		return
 	}
+
+	// 数据库配置
+	db, err := Connect("mysql", "root:root@tcp(10.0.0.103:3306)/"+dbName+"?charset=utf8mb4&parseTime=true")
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// 不需要生成的表
+	exclude := map[string]int{"log": 1}
+
+	// 初始化表
 	t := Table{}
-	// 配置 message
+
+	// 配置生成的 message
 	t.Message = map[string]Detail{
 		"Filter": {
 			Name: "Filter",
 			Cat:  "custom",
 			Attr: []AttrDetail{{
-				TypeName: "uint64", // 类型
+				TypeName: "string", // 类型
 				AttrName: "id",     // 字段
 			}},
 		},
@@ -122,7 +56,7 @@ func main() {
 			Cat:  "custom",
 			Attr: []AttrDetail{
 				{
-					TypeName: "uint64",
+					TypeName: "string",
 					AttrName: "id",
 				},
 				{
@@ -132,18 +66,23 @@ func main() {
 			},
 		},
 	}
-	// 包名
-	t.PackageModels = "test"
-	// 服务名
-	t.ServiceName = "TestService"
+
 	// 配置服务中的 RPC 方法
 	t.Method = map[string]MethodDetail{
 		"Get":    {Request: t.Message["Filter"], Response: t.Message["Request"]},
 		"Create": {Request: t.Message["Request"], Response: t.Message["Response"]},
 		"Update": {Request: t.Message["Request"], Response: t.Message["Response"]},
 	}
+
+	// 生成的包名
+	t.PackageModels = dbName
+
+	// 生成的服务名
+	t.ServiceName = dbName + "Service"
+
 	// 处理数据库字段
 	t.TableColumn(db, dbName, exclude)
+
 	// 生成文件
 	t.Generate(file, tpl)
 }
@@ -302,4 +241,77 @@ func IsFile(f string) bool {
 		return false
 	}
 	return !fi.IsDir()
+}
+
+var typeArr = map[string]string{
+	"int":       "int32",
+	"tinyint":   "int32",
+	"smallint":  "int32",
+	"mediumint": "int32",
+	"enum":      "int32",
+	"bigint":    "int64",
+	"varchar":   "string",
+	"timestamp": "google.protobuf.Timestamp",
+	"date":      "string",
+	"text":      "string",
+	"double":    "double",
+	"decimal":   "double",
+	"float":     "float",
+	"datetime":  "google.protobuf.Timestamp",
+	"blob":      "blob",
+}
+
+type Table struct {
+	PackageModels string
+	ServiceName   string
+	Method        map[string]MethodDetail
+	Comment       map[string]string
+	Name          map[string][]Column
+	Message       map[string]Detail
+}
+
+type MethodDetail struct {
+	Request  Detail
+	Response Detail
+}
+type Column struct {
+	Field   string
+	Type    string
+	Comment string
+}
+
+type RpcServers struct {
+	Models      string
+	Name        string
+	Funcs       []FuncParam
+	MessageList []Message
+}
+
+type FuncParam struct {
+	Name         string
+	RequestName  string
+	ResponseName string
+}
+
+type Message struct {
+	Name          string
+	MessageDetail []Field
+}
+
+type Field struct {
+	TypeName string
+	AttrName string
+	Num      int
+	Comment  string
+}
+
+type Detail struct {
+	Name string
+	Cat  string // all or custom
+	Attr []AttrDetail
+}
+
+type AttrDetail struct {
+	TypeName string
+	AttrName string
 }
