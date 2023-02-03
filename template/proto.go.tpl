@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package {{.Models}};
 
-option go_package = "{{.Models}}";
+option go_package = "/{{.Models}}";
 
 import "google/protobuf/timestamp.proto";
 
