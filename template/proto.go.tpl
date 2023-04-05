@@ -1,6 +1,5 @@
 syntax = "proto3";
 
-import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
 
 package {{.Package}};

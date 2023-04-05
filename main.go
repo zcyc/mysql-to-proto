@@ -280,13 +280,13 @@ var typeArr = map[string]string{
 	"enum":      "int32",
 	"bigint":    "int64",
 	"varchar":   "string",
-	"timestamp": "google.protobuf.Timestamp",
+	"timestamp": "string",
 	"date":      "string",
 	"text":      "string",
 	"double":    "double",
 	"decimal":   "double",
 	"float":     "float",
-	"datetime":  "google.protobuf.Timestamp",
+	"datetime":  "string",
 	"blob":      "blob",
 }
 
