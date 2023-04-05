@@ -39,16 +39,36 @@ func main() {
 
 	// 配置生成的 message
 	t.Messages = map[string]Detail{
-		"Filter": {
-			Name:     "Filter",
+		"RequestGetDelete": {
+			Name:     "RequestGetDelete",
 			Category: "custom",
-			Attrs: []Attr{{
-				Type: "string", // 类型
-				Name: "id",     // 字段
-			}},
+			Attrs: []Attr{
+				{
+					Type: "string", // 类型
+					Name: "id",     // 字段
+				},
+			},
 		},
-		"Request": {
-			Name:     "Request",
+		"RequestList": {
+			Name:     "RequestList",
+			Category: "custom",
+			Attrs: []Attr{
+				{
+					Type: "int32", // 类型
+					Name: "page",  // 字段
+				},
+				{
+					Type: "int32",
+					Name: "page_size",
+				},
+				{
+					Type: "string",
+					Name: "name",
+				},
+			},
+		},
+		"RequestCreateUpdate": {
+			Name:     "RequestCreateUpdate",
 			Category: "all",
 		},
 		"Response": {
@@ -56,12 +76,16 @@ func main() {
 			Category: "custom",
 			Attrs: []Attr{
 				{
-					Type: "string",
-					Name: "id",
+					Type: "int32",
+					Name: "code",
 				},
 				{
-					Type: "bool",
-					Name: "success",
+					Type: "string",
+					Name: "message",
+				},
+				{
+					Type: "string",
+					Name: "data",
 				},
 			},
 		},
@@ -69,10 +93,11 @@ func main() {
 
 	// 配置服务中的 RPC 方法
 	t.Actions = map[string]Action{
-		"Create": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
-		"Get":    {Request: t.Messages["Filter"], Response: t.Messages["Request"]},
-		"Update": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
-		"Delete": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
+		"Create": {Request: t.Messages["RequestCreateUpdate"], Response: t.Messages["Response"]},
+		"List":   {Request: t.Messages["RequestList"], Response: t.Messages["Response"]},
+		"Get":    {Request: t.Messages["RequestGetDelete"], Response: t.Messages["Response"]},
+		"Update": {Request: t.Messages["RequestCreateUpdate"], Response: t.Messages["Response"]},
+		"Delete": {Request: t.Messages["RequestGetDelete"], Response: t.Messages["Response"]},
 	}
 
 	// 生成的包名
@@ -173,6 +198,12 @@ func (r *Service) HandleFuncs(t *Table) {
 			funcParam.Method = FunctionMethod(strings.ToUpper(n))
 			funcParam.ResponseName = k + m.Response.Name
 			funcParam.RequestName = k + m.Request.Name
+
+			// 特殊处理 url
+			if n == "List" {
+				funcParam.Path = strings.ToLower(k) + "/list"
+			}
+
 			r.Functions = append(r.Functions, funcParam)
 		}
 	}
