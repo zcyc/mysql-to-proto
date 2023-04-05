@@ -16,7 +16,7 @@ func main() {
 	tpl := "./template/proto.go.tpl"
 
 	// 要生成的数据库
-	dbName := "social"
+	dbName := "test"
 
 	// 生成文件路径
 	file := "./template/" + dbName + ".proto"
@@ -26,7 +26,7 @@ func main() {
 	}
 
 	// 数据库配置
-	db, err := Connect("mysql", "root:root@tcp(10.0.0.103:3306)/"+dbName+"?charset=utf8mb4&parseTime=true")
+	db, err := Connect("mysql", "root:toor@tcp(127.0.0.1:3306)/"+dbName+"?charset=utf8mb4&parseTime=true")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -38,47 +38,48 @@ func main() {
 	t := Table{}
 
 	// 配置生成的 message
-	t.Message = map[string]Detail{
+	t.Messages = map[string]Detail{
 		"Filter": {
-			Name: "Filter",
-			Cat:  "custom",
-			Attr: []AttrDetail{{
-				TypeName: "string", // 类型
-				AttrName: "id",     // 字段
+			Name:     "Filter",
+			Category: "custom",
+			Attrs: []Attr{{
+				Type: "string", // 类型
+				Name: "id",     // 字段
 			}},
 		},
 		"Request": {
-			Name: "Request",
-			Cat:  "all",
+			Name:     "Request",
+			Category: "all",
 		},
 		"Response": {
-			Name: "Response",
-			Cat:  "custom",
-			Attr: []AttrDetail{
+			Name:     "Response",
+			Category: "custom",
+			Attrs: []Attr{
 				{
-					TypeName: "string",
-					AttrName: "id",
+					Type: "string",
+					Name: "id",
 				},
 				{
-					TypeName: "bool",
-					AttrName: "success",
+					Type: "bool",
+					Name: "success",
 				},
 			},
 		},
 	}
 
 	// 配置服务中的 RPC 方法
-	t.Method = map[string]MethodDetail{
-		"Get":    {Request: t.Message["Filter"], Response: t.Message["Request"]},
-		"Create": {Request: t.Message["Request"], Response: t.Message["Response"]},
-		"Update": {Request: t.Message["Request"], Response: t.Message["Response"]},
+	t.Actions = map[string]Action{
+		"Create": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
+		"Get":    {Request: t.Messages["Filter"], Response: t.Messages["Request"]},
+		"Update": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
+		"Delete": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
 	}
 
 	// 生成的包名
-	t.PackageModels = dbName
+	t.PackageName = dbName
 
 	// 生成的服务名
-	t.ServiceName = dbName + "Service"
+	t.ServiceName = StrFirstToUpper(dbName)
 
 	// 处理数据库字段
 	t.TableColumn(db, dbName, exclude)
@@ -98,15 +99,15 @@ func (table *Table) TableColumn(db *sql.DB, dbName string, exclude map[string]in
 		fmt.Printf("error: %v", err)
 		return
 	}
-	table.Comment = make(map[string]string)
-	table.Name = make(map[string][]Column)
+	table.Comments = make(map[string]string)
+	table.Names = make(map[string][]Column)
 	for rows.Next() {
-		rows.Scan(&name, &comment, &column.Field, &column.Type, &column.Comment)
+		rows.Scan(&name, &comment, &column.Name, &column.Type, &column.Comment)
 		if _, ok := exclude[name]; ok {
 			continue
 		}
-		if _, ok := table.Comment[name]; !ok {
-			table.Comment[name] = comment
+		if _, ok := table.Comments[name]; !ok {
+			table.Comments[name] = comment
 		}
 
 		n := strings.Index(column.Type, "(")
@@ -117,7 +118,7 @@ func (table *Table) TableColumn(db *sql.DB, dbName string, exclude map[string]in
 		if n > 0 {
 			column.Type = column.Type[0:n]
 		}
-		table.Name[name] = append(table.Name[name], column)
+		table.Names[name] = append(table.Names[name], column)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -128,7 +129,7 @@ func (table *Table) TableColumn(db *sql.DB, dbName string, exclude map[string]in
 
 // Generate 生成文件
 func (table *Table) Generate(filepath, tpl string) {
-	rpcservers := RpcServers{Models: table.PackageModels, Name: table.ServiceName}
+	rpcservers := Service{Package: table.PackageName, Name: table.ServiceName}
 	rpcservers.HandleFuncs(table)
 	rpcservers.HandleMessage(table)
 	tmpl, err := template.ParseFiles(tpl)
@@ -162,58 +163,86 @@ func Connect(driverName, dsn string) (*sql.DB, error) {
 	return db, err
 }
 
-func (r *RpcServers) HandleFuncs(t *Table) {
-	var funcParam FuncParam
-	for key := range t.Comment {
+func (r *Service) HandleFuncs(t *Table) {
+	var funcParam Function
+	for key := range t.Comments {
 		k := StrFirstToUpper(key)
-		for n, m := range t.Method {
+		for n, m := range t.Actions {
 			funcParam.Name = n + k
+			funcParam.Path = strings.ToLower(k)
+			funcParam.Method = FunctionMethod(strings.ToUpper(n))
 			funcParam.ResponseName = k + m.Response.Name
 			funcParam.RequestName = k + m.Request.Name
-			r.Funcs = append(r.Funcs, funcParam)
+			r.Functions = append(r.Functions, funcParam)
 		}
 	}
 }
 
-func (r *RpcServers) HandleMessage(t *Table) {
+func (r *Service) HandleMessage(t *Table) {
 	message := Message{}
 	field := Field{}
 	var i int
 
-	for key, value := range t.Name {
+	for key, value := range t.Names {
 		k := StrFirstToUpper(key)
 
-		for name, detail := range t.Message {
+		for name, detail := range t.Messages {
 			message.Name = k + name
-			message.MessageDetail = nil
-			if detail.Cat == "all" {
+			message.Detail = nil
+			if detail.Category == "all" {
 				i = 1
 				for _, f := range value {
-					field.AttrName = f.Field
-					field.TypeName = TypeMToP(f.Type)
+					field.Name = f.Name
+					field.Type = TypeMToP(f.Type)
 					if f.Type == "blob" {
-						field.TypeName = "string"
+						field.Type = "string"
 						field.Comment = "; //用的时候要转成byte[] Convert.FromBase64String" + f.Comment
 					} else {
 						field.Comment = "; //" + f.Comment
 					}
 					field.Num = i
-					message.MessageDetail = append(message.MessageDetail, field)
+					message.Detail = append(message.Detail, field)
 					i++
 				}
-			} else if detail.Cat == "custom" {
+			} else if detail.Category == "custom" {
 				i = 1
-				for _, f := range detail.Attr {
-					field.TypeName = f.TypeName
-					field.AttrName = f.AttrName
+				for _, f := range detail.Attrs {
+					field.Type = f.Type
+					field.Name = f.Name
 					field.Num = i
-					message.MessageDetail = append(message.MessageDetail, field)
+					message.Detail = append(message.Detail, field)
 					i++
 				}
 			}
-			r.MessageList = append(r.MessageList, message)
+			r.Messages = append(r.Messages, message)
 		}
 	}
+}
+
+func FunctionMethod(function string) string {
+	getKeys := []string{"GET", "FIND", "QUERY", "LIST", "SEARCH"}
+	postKeys := []string{"POST", "CREATE"}
+	putKeys := []string{"PUT", "UPDATE"}
+	deleteKeys := []string{"DELETE", "REMOVE"}
+	if sliceContains(getKeys, function) {
+		return "get"
+	} else if sliceContains(postKeys, function) {
+		return "post"
+	} else if sliceContains(putKeys, function) {
+		return "put"
+	} else if sliceContains(deleteKeys, function) {
+		return "delete"
+	}
+	return "post"
+}
+
+func sliceContains(s []string, str string) bool {
+	for index := range s {
+		if s[index] == str {
+			return true
+		}
+	}
+	return false
 }
 
 func TypeMToP(m string) string {
@@ -262,56 +291,58 @@ var typeArr = map[string]string{
 }
 
 type Table struct {
-	PackageModels string
-	ServiceName   string
-	Method        map[string]MethodDetail
-	Comment       map[string]string
-	Name          map[string][]Column
-	Message       map[string]Detail
+	PackageName string
+	ServiceName string
+	Actions     map[string]Action
+	Comments    map[string]string
+	Names       map[string][]Column
+	Messages    map[string]Detail
 }
 
-type MethodDetail struct {
+type Action struct {
 	Request  Detail
 	Response Detail
 }
 type Column struct {
-	Field   string
+	Name    string
 	Type    string
 	Comment string
 }
 
-type RpcServers struct {
-	Models      string
-	Name        string
-	Funcs       []FuncParam
-	MessageList []Message
+type Service struct {
+	Package   string
+	Name      string
+	Functions []Function
+	Messages  []Message
 }
 
-type FuncParam struct {
+type Function struct {
 	Name         string
+	Path         string
+	Method       string
 	RequestName  string
 	ResponseName string
 }
 
 type Message struct {
-	Name          string
-	MessageDetail []Field
+	Name   string
+	Detail []Field
 }
 
 type Field struct {
-	TypeName string
-	AttrName string
-	Num      int
-	Comment  string
+	Type    string
+	Name    string
+	Num     int
+	Comment string
 }
 
 type Detail struct {
-	Name string
-	Cat  string // all or custom
-	Attr []AttrDetail
+	Name     string
+	Category string // all or custom
+	Attrs    []Attr
 }
 
-type AttrDetail struct {
-	TypeName string
-	AttrName string
+type Attr struct {
+	Type string
+	Name string
 }

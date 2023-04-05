@@ -1,19 +1,24 @@
 syntax = "proto3";
 
-package {{.Models}};
-
-option go_package = "/{{.Models}}";
-
 import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
 
-// The {{.Models}} service definition.
+package {{.Package}};
+option go_package = "/{{.Package}}";
+
+// The {{.Name}} service definition.
 service {{.Name}} {
- {{range .Funcs}} rpc {{.Name}}({{.RequestName}}) returns ({{.ResponseName}}) {}
+ {{range .Functions}} rpc {{.Name}}({{.RequestName}}) returns ({{.ResponseName}}) {
+    option (google.api.http) = {
+			{{.Method}}: "/v1/{{.Path}}"
+	};
+
+ }
  {{end}}
 }
-{{range .MessageList}}
+{{range .Messages}}
 message {{.Name}} {
-{{range .MessageDetail}} {{.TypeName}} {{.AttrName}} = {{.Num}}{{.Comment}}
+{{range .Detail}} {{.Type}} {{.Name}} = {{.Num}}{{.Comment}}
 {{end}}}
 {{end}}
 
