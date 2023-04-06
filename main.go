@@ -61,10 +61,6 @@ func main() {
 					Type: "int32",
 					Name: "page_size",
 				},
-				{
-					Type: "string",
-					Name: "name",
-				},
 			},
 		},
 		"RequestCreateUpdate": {
