@@ -39,8 +39,8 @@ func main() {
 
 	// 配置生成的 message
 	t.Messages = map[string]Detail{
-		"RequestGetDelete": {
-			Name:     "RequestGetDelete",
+		"Filter": {
+			Name:     "Filter",
 			Category: "custom",
 			Attrs: []Attr{
 				{
@@ -49,22 +49,24 @@ func main() {
 				},
 			},
 		},
-		"RequestList": {
-			Name:     "RequestList",
+		"Page": {
+			Name:     "Page",
 			Category: "custom",
 			Attrs: []Attr{
 				{
-					Type: "int32", // 类型
-					Name: "page",  // 字段
+					Type:    "int32", // 类型
+					Name:    "page",  // 字段
+					Comment: "第几页",
 				},
 				{
-					Type: "int32",
-					Name: "page_size",
+					Type:    "int32",
+					Name:    "page_size",
+					Comment: "每页数量",
 				},
 			},
 		},
-		"RequestCreateUpdate": {
-			Name:     "RequestCreateUpdate",
+		"Request": {
+			Name:     "Request",
 			Category: "all",
 		},
 		"Response": {
@@ -72,16 +74,19 @@ func main() {
 			Category: "custom",
 			Attrs: []Attr{
 				{
-					Type: "int32",
-					Name: "code",
+					Type:    "int32",
+					Name:    "code",
+					Comment: "错误码",
 				},
 				{
-					Type: "string",
-					Name: "message",
+					Type:    "string",
+					Name:    "message",
+					Comment: "错误信息",
 				},
 				{
-					Type: "string",
-					Name: "data",
+					Type:    "string",
+					Name:    "data",
+					Comment: "返回值，使用前将类型改成 any",
 				},
 			},
 		},
@@ -89,11 +94,11 @@ func main() {
 
 	// 配置服务中的 RPC 方法
 	t.Actions = map[string]Action{
-		"Create": {Request: t.Messages["RequestCreateUpdate"], Response: t.Messages["Response"]},
-		"List":   {Request: t.Messages["RequestList"], Response: t.Messages["Response"]},
-		"Get":    {Request: t.Messages["RequestGetDelete"], Response: t.Messages["Response"]},
-		"Update": {Request: t.Messages["RequestCreateUpdate"], Response: t.Messages["Response"]},
-		"Delete": {Request: t.Messages["RequestGetDelete"], Response: t.Messages["Response"]},
+		"Create": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
+		"List":   {Request: t.Messages["Page"], Response: t.Messages["Response"]},
+		"Get":    {Request: t.Messages["Filter"], Response: t.Messages["Response"]},
+		"Update": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
+		"Delete": {Request: t.Messages["Filter"], Response: t.Messages["Response"]},
 	}
 
 	// 生成的包名
@@ -206,39 +211,64 @@ func (r *Service) HandleFuncs(t *Table) {
 }
 
 func (r *Service) HandleMessage(t *Table) {
-	message := Message{}
-	field := Field{}
-	var i int
-
+	var message Message
 	for key, value := range t.Names {
 		k := StrFirstToUpper(key)
 
 		for name, detail := range t.Messages {
 			message.Name = k + name
+
+			// 这里必须清空一下
 			message.Detail = nil
+
+			// 处理数据表全部列消息体
 			if detail.Category == "all" {
-				i = 1
-				for _, f := range value {
+				for i, f := range value {
+					var field Field
 					field.Name = f.Name
 					field.Type = TypeMToP(f.Type)
+					field.Num = i + 1
 					if f.Type == "blob" {
-						field.Type = "string"
-						field.Comment = "; //用的时候要转成byte[] Convert.FromBase64String" + f.Comment
+						if f.Comment != "" {
+							field.Type = "string"
+							field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String" + f.Comment
+						} else {
+							field.Type = "string"
+							field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String"
+						}
 					} else {
-						field.Comment = "; //" + f.Comment
+						if f.Comment != "" {
+							field.Comment = "; // " + f.Comment
+						} else {
+							field.Comment = ";"
+						}
 					}
-					field.Num = i
 					message.Detail = append(message.Detail, field)
-					i++
 				}
 			} else if detail.Category == "custom" {
-				i = 1
-				for _, f := range detail.Attrs {
+				// 处理自定义消息体
+				for i, f := range detail.Attrs {
+					var field Field
 					field.Type = f.Type
 					field.Name = f.Name
-					field.Num = i
+					field.Num = i + 1
+					field.Type = TypeMToP(f.Type)
+					if f.Type == "blob" {
+						if f.Comment != "" {
+							field.Type = "string"
+							field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String，" + f.Comment
+						} else {
+							field.Type = "string"
+							field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String"
+						}
+					} else {
+						if f.Comment != "" {
+							field.Comment = "; // " + f.Comment
+						} else {
+							field.Comment = ";"
+						}
+					}
 					message.Detail = append(message.Detail, field)
-					i++
 				}
 			}
 			r.Messages = append(r.Messages, message)
@@ -246,6 +276,7 @@ func (r *Service) HandleMessage(t *Table) {
 	}
 }
 
+// 获取方法的请求方式
 func FunctionMethod(function string) string {
 	getKeys := []string{"GET", "FIND", "QUERY", "LIST", "SEARCH"}
 	postKeys := []string{"POST", "CREATE"}
@@ -263,6 +294,7 @@ func FunctionMethod(function string) string {
 	return "post"
 }
 
+// 判断切片是否包含
 func sliceContains(s []string, str string) bool {
 	for index := range s {
 		if s[index] == str {
@@ -272,6 +304,7 @@ func sliceContains(s []string, str string) bool {
 	return false
 }
 
+// MySQL 类型转 PB 类型
 func TypeMToP(m string) string {
 	if _, ok := typeArr[m]; ok {
 		return typeArr[m]
@@ -279,6 +312,26 @@ func TypeMToP(m string) string {
 	return "string"
 }
 
+// MySQL 类型和 PB 类型映射表
+var typeArr = map[string]string{
+	"int":       "int32",
+	"tinyint":   "int32",
+	"smallint":  "int32",
+	"mediumint": "int32",
+	"enum":      "int32",
+	"bigint":    "int64",
+	"varchar":   "string",
+	"timestamp": "string",
+	"date":      "string",
+	"text":      "string",
+	"double":    "double",
+	"decimal":   "double",
+	"float":     "float",
+	"datetime":  "string",
+	"blob":      "blob",
+}
+
+// 单词首字母转大写
 func StrFirstToUpper(str string) string {
 	temp := strings.Split(str, "_")
 	var upperStr string
@@ -297,24 +350,6 @@ func IsFile(f string) bool {
 		return false
 	}
 	return !fi.IsDir()
-}
-
-var typeArr = map[string]string{
-	"int":       "int32",
-	"tinyint":   "int32",
-	"smallint":  "int32",
-	"mediumint": "int32",
-	"enum":      "int32",
-	"bigint":    "int64",
-	"varchar":   "string",
-	"timestamp": "string",
-	"date":      "string",
-	"text":      "string",
-	"double":    "double",
-	"decimal":   "double",
-	"float":     "float",
-	"datetime":  "string",
-	"blob":      "blob",
 }
 
 type Table struct {
@@ -370,6 +405,7 @@ type Detail struct {
 }
 
 type Attr struct {
-	Type string
-	Name string
+	Type    string
+	Name    string
+	Comment string
 }
