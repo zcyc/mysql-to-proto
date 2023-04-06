@@ -38,7 +38,7 @@ func main() {
 	t := Table{}
 
 	// 配置生成的 message
-	t.Messages = map[string]Detail{
+	t.Details = map[string]Detail{
 		"Filter": {
 			Name:     "Filter",
 			Category: "custom",
@@ -94,11 +94,11 @@ func main() {
 
 	// 配置服务中的 RPC 方法
 	t.Actions = map[string]Action{
-		"Create": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
-		"List":   {Request: t.Messages["Page"], Response: t.Messages["Response"]},
-		"Get":    {Request: t.Messages["Filter"], Response: t.Messages["Response"]},
-		"Update": {Request: t.Messages["Request"], Response: t.Messages["Response"]},
-		"Delete": {Request: t.Messages["Filter"], Response: t.Messages["Response"]},
+		"Create": {Request: t.Details["Request"], Response: t.Details["Response"]},
+		"List":   {Request: t.Details["Page"], Response: t.Details["Response"]},
+		"Get":    {Request: t.Details["Filter"], Response: t.Details["Response"]},
+		"Update": {Request: t.Details["Request"], Response: t.Details["Response"]},
+		"Delete": {Request: t.Details["Filter"], Response: t.Details["Response"]},
 	}
 
 	// 生成的包名
@@ -215,7 +215,7 @@ func (r *Service) HandleMessage(t *Table) {
 	for key, value := range t.Names {
 		k := StrFirstToUpper(key)
 
-		for name, detail := range t.Messages {
+		for name, detail := range t.Details {
 			message.Name = k + name
 
 			// 这里必须清空一下
@@ -358,7 +358,7 @@ type Table struct {
 	Actions     map[string]Action
 	Comments    map[string]string
 	Names       map[string][]Column
-	Messages    map[string]Detail
+	Details     map[string]Detail
 }
 
 type Action struct {
