@@ -5,6 +5,7 @@ import "google/api/annotations.proto";
 package {{.Package}};
 option go_package = "/{{.Package}}";
 
+{{range .Services}}
 // The {{.Name}} service definition.
 service {{.Name}} {
  {{range .Functions}} rpc {{.Name}}({{.RequestName}}) returns ({{.ResponseName}}) {
@@ -20,4 +21,4 @@ message {{.Name}} {
 {{range .Detail}} {{.Type}} {{.Name}} = {{.Num}}{{.Comment}}
 {{end}}}
 {{end}}
-
+{{end}}

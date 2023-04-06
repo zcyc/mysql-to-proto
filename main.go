@@ -35,14 +35,14 @@ func main() {
 	exclude := map[string]int{"log": 1}
 
 	// 初始化表
-	t := Table{}
+	d := Database{}
 
 	// 配置生成的 message
-	t.Details = map[string]Detail{
+	d.Details = map[string]Detail{
 		"Filter": {
 			Name:     "Filter",
 			Category: "custom",
-			Attrs: []Attr{
+			Attributes: []Attribute{
 				{
 					Type: "string", // 类型
 					Name: "id",     // 字段
@@ -52,7 +52,7 @@ func main() {
 		"Page": {
 			Name:     "Page",
 			Category: "custom",
-			Attrs: []Attr{
+			Attributes: []Attribute{
 				{
 					Type:    "int32", // 类型
 					Name:    "page",  // 字段
@@ -72,7 +72,7 @@ func main() {
 		"Response": {
 			Name:     "Response",
 			Category: "custom",
-			Attrs: []Attr{
+			Attributes: []Attribute{
 				{
 					Type:    "int32",
 					Name:    "code",
@@ -93,29 +93,26 @@ func main() {
 	}
 
 	// 配置服务中的 RPC 方法
-	t.Actions = map[string]Action{
-		"Create": {Request: t.Details["Request"], Response: t.Details["Response"]},
-		"List":   {Request: t.Details["Page"], Response: t.Details["Response"]},
-		"Get":    {Request: t.Details["Filter"], Response: t.Details["Response"]},
-		"Update": {Request: t.Details["Request"], Response: t.Details["Response"]},
-		"Delete": {Request: t.Details["Filter"], Response: t.Details["Response"]},
+	d.Actions = map[string]Action{
+		"Create": {Request: d.Details["Request"], Response: d.Details["Response"]},
+		"List":   {Request: d.Details["Page"], Response: d.Details["Response"]},
+		"Get":    {Request: d.Details["Filter"], Response: d.Details["Response"]},
+		"Update": {Request: d.Details["Request"], Response: d.Details["Response"]},
+		"Delete": {Request: d.Details["Filter"], Response: d.Details["Response"]},
 	}
 
 	// 生成的包名
-	t.PackageName = dbName
-
-	// 生成的服务名
-	t.ServiceName = StrFirstToUpper(dbName)
+	d.Name = dbName
 
 	// 处理数据库字段
-	t.TableColumn(db, dbName, exclude)
+	d.TableColumn(db, dbName, exclude)
 
 	// 生成文件
-	t.Generate(file, tpl)
+	d.Generate(file, tpl)
 }
 
 // TableColumn 获取表信息
-func (table *Table) TableColumn(db *sql.DB, dbName string, exclude map[string]int) {
+func (d *Database) TableColumn(db *sql.DB, dbName string, exclude map[string]int) {
 	rows, err := db.Query("SELECT t.TABLE_NAME,t.TABLE_COMMENT,c.COLUMN_NAME,c.COLUMN_TYPE,c.COLUMN_COMMENT FROM information_schema.TABLES t,INFORMATION_SCHEMA.Columns c WHERE c.TABLE_NAME=t.TABLE_NAME AND t.`TABLE_SCHEMA`='" + dbName + "'")
 	defer db.Close()
 	defer rows.Close()
@@ -125,15 +122,15 @@ func (table *Table) TableColumn(db *sql.DB, dbName string, exclude map[string]in
 		fmt.Printf("error: %v", err)
 		return
 	}
-	table.Comments = make(map[string]string)
-	table.Names = make(map[string][]Column)
+	d.Comments = make(map[string]string)
+	d.Tables = make(map[string][]Column)
 	for rows.Next() {
 		rows.Scan(&name, &comment, &column.Name, &column.Type, &column.Comment)
 		if _, ok := exclude[name]; ok {
 			continue
 		}
-		if _, ok := table.Comments[name]; !ok {
-			table.Comments[name] = comment
+		if _, ok := d.Comments[name]; !ok {
+			d.Comments[name] = comment
 		}
 
 		n := strings.Index(column.Type, "(")
@@ -144,7 +141,7 @@ func (table *Table) TableColumn(db *sql.DB, dbName string, exclude map[string]in
 		if n > 0 {
 			column.Type = column.Type[0:n]
 		}
-		table.Names[name] = append(table.Names[name], column)
+		d.Tables[name] = append(d.Tables[name], column)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -154,10 +151,15 @@ func (table *Table) TableColumn(db *sql.DB, dbName string, exclude map[string]in
 }
 
 // Generate 生成文件
-func (table *Table) Generate(filepath, tpl string) {
-	rpcservers := Service{Package: table.PackageName, Name: table.ServiceName}
-	rpcservers.HandleFuncs(table)
-	rpcservers.HandleMessage(table)
+func (d *Database) Generate(filepath, tpl string) {
+	protoBuff := ProtoBuff{Package: d.Name}
+	for tableName := range d.Comments {
+		service := Service{Name: StrFirstToUpper(tableName)}
+		service.HandleFuncs(d.Actions, tableName)
+		service.HandleMessage(d.Details, tableName, d.Tables[tableName])
+		protoBuff.Services = append(protoBuff.Services, service)
+	}
+
 	tmpl, err := template.ParseFiles(tpl)
 	if err != nil {
 		fmt.Printf("error: %v", err)
@@ -168,7 +170,7 @@ func (table *Table) Generate(filepath, tpl string) {
 		fmt.Printf("error: %v", err)
 		return
 	}
-	err = tmpl.Execute(file, rpcservers)
+	err = tmpl.Execute(file, protoBuff)
 	if err != nil {
 		fmt.Printf("error: %v", err)
 		return
@@ -189,90 +191,86 @@ func Connect(driverName, dsn string) (*sql.DB, error) {
 	return db, err
 }
 
-func (r *Service) HandleFuncs(t *Table) {
-	var funcParam Function
-	for key := range t.Comments {
-		k := StrFirstToUpper(key)
-		for n, m := range t.Actions {
-			funcParam.Name = n + k
-			funcParam.Path = strings.ToLower(k)
-			funcParam.Method = FunctionMethod(strings.ToUpper(n))
-			funcParam.ResponseName = k + m.Response.Name
-			funcParam.RequestName = k + m.Request.Name
+func (s *Service) HandleFuncs(actions map[string]Action, key string) {
+	k := StrFirstToUpper(key)
+	for n, m := range actions {
+		var funcParam Function
+		funcParam.Name = n + k
+		funcParam.Path = strings.ToLower(k)
+		funcParam.Method = FunctionMethod(strings.ToUpper(n))
+		funcParam.ResponseName = k + m.Response.Name
+		funcParam.RequestName = k + m.Request.Name
 
-			// 特殊处理 url
-			if n == "List" {
-				funcParam.Path = strings.ToLower(k) + "/list"
-			}
-
-			r.Functions = append(r.Functions, funcParam)
+		// 特殊处理 url
+		if n == "List" {
+			funcParam.Path = strings.ToLower(k) + "/list"
 		}
+
+		s.Functions = append(s.Functions, funcParam)
 	}
 }
 
-func (r *Service) HandleMessage(t *Table) {
+func (s *Service) HandleMessage(details map[string]Detail, key string, columns []Column) {
 	var message Message
-	for key, value := range t.Names {
-		k := StrFirstToUpper(key)
+	k := StrFirstToUpper(key)
 
-		for name, detail := range t.Details {
-			message.Name = k + name
+	for name, detail := range details {
+		message.Name = k + name
 
-			// 这里必须清空一下
-			message.Detail = nil
+		// 这里必须清空一下
+		message.Detail = nil
 
-			// 处理数据表全部列消息体
-			if detail.Category == "all" {
-				for i, f := range value {
-					var field Field
-					field.Name = f.Name
-					field.Type = TypeMToP(f.Type)
-					field.Num = i + 1
-					if f.Type == "blob" {
-						if f.Comment != "" {
-							field.Type = "string"
-							field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String" + f.Comment
-						} else {
-							field.Type = "string"
-							field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String"
-						}
+		// 处理数据表全部列消息体
+		if detail.Category == "all" {
+			for i, f := range columns {
+				var field Field
+				field.Name = f.Name
+				field.Type = TypeMToP(f.Type)
+				field.Num = i + 1
+				if f.Type == "blob" {
+					if f.Comment != "" {
+						field.Type = "string"
+						field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String" + f.Comment
 					} else {
-						if f.Comment != "" {
-							field.Comment = "; // " + f.Comment
-						} else {
-							field.Comment = ";"
-						}
+						field.Type = "string"
+						field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String"
 					}
-					message.Detail = append(message.Detail, field)
-				}
-			} else if detail.Category == "custom" {
-				// 处理自定义消息体
-				for i, f := range detail.Attrs {
-					var field Field
-					field.Type = f.Type
-					field.Name = f.Name
-					field.Num = i + 1
-					field.Type = TypeMToP(f.Type)
-					if f.Type == "blob" {
-						if f.Comment != "" {
-							field.Type = "string"
-							field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String，" + f.Comment
-						} else {
-							field.Type = "string"
-							field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String"
-						}
+				} else {
+					if f.Comment != "" {
+						field.Comment = "; // " + f.Comment
 					} else {
-						if f.Comment != "" {
-							field.Comment = "; // " + f.Comment
-						} else {
-							field.Comment = ";"
-						}
+						field.Comment = ";"
 					}
-					message.Detail = append(message.Detail, field)
 				}
+				message.Detail = append(message.Detail, field)
 			}
-			r.Messages = append(r.Messages, message)
+		} else if detail.Category == "custom" {
+			// 处理自定义消息体
+			for i, f := range detail.Attributes {
+				var field Field
+				field.Type = f.Type
+				field.Name = f.Name
+				field.Num = i + 1
+				field.Type = TypeMToP(f.Type)
+				if f.Type == "blob" {
+					if f.Comment != "" {
+						field.Type = "string"
+						field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String，" + f.Comment
+					} else {
+						field.Type = "string"
+						field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String"
+					}
+				} else {
+					if f.Comment != "" {
+						field.Comment = "; // " + f.Comment
+					} else {
+						field.Comment = ";"
+					}
+				}
+				message.Detail = append(message.Detail, field)
+			}
 		}
+		s.Messages = append(s.Messages, message)
 	}
 }
 
@@ -352,13 +350,12 @@ func IsFile(f string) bool {
 	return !fi.IsDir()
 }
 
-type Table struct {
-	PackageName string
-	ServiceName string
-	Actions     map[string]Action
-	Comments    map[string]string
-	Names       map[string][]Column
-	Details     map[string]Detail
+type Database struct {
+	Name     string
+	Actions  map[string]Action
+	Comments map[string]string
+	Tables   map[string][]Column
+	Details  map[string]Detail
 }
 
 type Action struct {
@@ -371,8 +368,12 @@ type Column struct {
 	Comment string
 }
 
+type ProtoBuff struct {
+	Package  string
+	Services []Service
+}
+
 type Service struct {
-	Package   string
 	Name      string
 	Functions []Function
 	Messages  []Message
@@ -399,12 +400,12 @@ type Field struct {
 }
 
 type Detail struct {
-	Name     string
-	Category string // all or custom
-	Attrs    []Attr
+	Name       string
+	Category   string
+	Attributes []Attribute
 }
 
-type Attr struct {
+type Attribute struct {
 	Type    string
 	Name    string
 	Comment string
