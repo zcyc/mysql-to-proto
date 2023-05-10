@@ -54,12 +54,12 @@ func main() {
 			Category: "custom",
 			Attributes: []Attribute{
 				{
-					Type:    "int32", // 类型
+					Type:    "int64", // 类型
 					Name:    "page",  // 字段
 					Comment: "第几页",
 				},
 				{
-					Type:    "int32",
+					Type:    "int64",
 					Name:    "page_size",
 					Comment: "每页数量",
 				},
