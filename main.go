@@ -251,7 +251,6 @@ func (s *Service) HandleMessage(details map[string]Detail, key string, columns [
 				field.Type = f.Type
 				field.Name = f.Name
 				field.Num = i + 1
-				field.Type = TypeMToP(f.Type)
 				if f.Type == "blob" {
 					if f.Comment != "" {
 						field.Type = "string"
