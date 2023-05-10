@@ -344,7 +344,6 @@ func UpperCamel(str string) string {
 
 // 横杠分割
 func Kebab(str string) string {
-	println(str)
 	var result strings.Builder
 	for i, char := range str {
 		if i > 0 && unicode.IsUpper(char) {
