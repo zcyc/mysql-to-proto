@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"unicode"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -154,7 +155,7 @@ func (d *Database) TableColumn(db *sql.DB, dbName string, exclude map[string]int
 func (d *Database) Generate(filepath, tpl string) {
 	protoBuff := ProtoBuff{Package: d.Name}
 	for tableName := range d.Comments {
-		service := Service{Name: StrFirstToUpper(tableName)}
+		service := Service{Name: UpperCamel(tableName)}
 		service.HandleFuncs(d.Actions, tableName)
 		service.HandleMessage(d.Details, tableName, d.Tables[tableName])
 		protoBuff.Services = append(protoBuff.Services, service)
@@ -192,18 +193,18 @@ func Connect(driverName, dsn string) (*sql.DB, error) {
 }
 
 func (s *Service) HandleFuncs(actions map[string]Action, key string) {
-	k := StrFirstToUpper(key)
+	k := UpperCamel(key)
 	for n, m := range actions {
 		var funcParam Function
 		funcParam.Name = n + k
-		funcParam.Path = strings.ToLower(k)
+		funcParam.Path = Kebab(k)
 		funcParam.Method = FunctionMethod(strings.ToUpper(n))
 		funcParam.ResponseName = k + m.Response.Name
 		funcParam.RequestName = k + m.Request.Name
 
 		// 特殊处理 url
 		if n == "List" {
-			funcParam.Path = strings.ToLower(k) + "/list"
+			funcParam.Path = Kebab(k) + "/list"
 		}
 
 		s.Functions = append(s.Functions, funcParam)
@@ -212,7 +213,7 @@ func (s *Service) HandleFuncs(actions map[string]Action, key string) {
 
 func (s *Service) HandleMessage(details map[string]Detail, key string, columns []Column) {
 	var message Message
-	k := StrFirstToUpper(key)
+	k := UpperCamel(key)
 
 	for name, detail := range details {
 		message.Name = k + name
@@ -328,8 +329,8 @@ var typeArr = map[string]string{
 	"blob":      "blob",
 }
 
-// 单词首字母转大写
-func StrFirstToUpper(str string) string {
+// 大驼峰
+func UpperCamel(str string) string {
 	temp := strings.Split(str, "_")
 	var upperStr string
 	for _, v := range temp {
@@ -339,6 +340,19 @@ func StrFirstToUpper(str string) string {
 		}
 	}
 	return upperStr
+}
+
+// 横杠分割
+func Kebab(str string) string {
+	println(str)
+	var result strings.Builder
+	for i, char := range str {
+		if i > 0 && unicode.IsUpper(char) {
+			result.WriteRune('-')
+		}
+		result.WriteRune(unicode.ToLower(char))
+	}
+	return result.String()
 }
 
 func IsFile(f string) bool {
