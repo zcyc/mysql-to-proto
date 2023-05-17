@@ -1,21 +1,23 @@
 # mysql-to-proto
 
-从 MySQL 生成 proto
+Generate proto from MySQL
 
-## 依赖
+## Usage
+
+### Install
 
 ```bash
 go get -u github.com/go-sql-driver/mysql
 ```
 
-## 使用方法
+### Run
 
-修改 main.go 中的配置，然后启动程序
+Modify the configuration in main.go, and then start the program
 
 ```bash
 go run main.go
 ```
 
-## 灵感来源
+## Thanks
 
 - [mysql-to-proto](https://github.com/guyan0319/mysql-to-proto)
