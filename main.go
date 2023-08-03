@@ -32,6 +32,11 @@ func main() {
 		fmt.Println(err)
 	}
 
+	// 需要生成的表
+	include := map[string]int{
+		"test": 1,
+	}
+
 	// 不需要生成的表
 	exclude := map[string]int{"log": 1}
 
@@ -106,14 +111,14 @@ func main() {
 	d.Name = dbName
 
 	// 处理数据库字段
-	d.TableColumn(db, dbName, exclude)
+	d.TableColumn(db, dbName, include, exclude)
 
 	// 生成文件
 	d.Generate(file, tpl)
 }
 
 // TableColumn 获取表信息
-func (d *Database) TableColumn(db *sql.DB, dbName string, exclude map[string]int) {
+func (d *Database) TableColumn(db *sql.DB, dbName string, include, exclude map[string]int) {
 	rows, err := db.Query("SELECT t.TABLE_NAME,t.TABLE_COMMENT,c.COLUMN_NAME,c.COLUMN_TYPE,c.COLUMN_COMMENT FROM information_schema.TABLES t,INFORMATION_SCHEMA.Columns c WHERE c.TABLE_NAME=t.TABLE_NAME AND t.`TABLE_SCHEMA`='" + dbName + "'")
 	defer db.Close()
 	defer rows.Close()
@@ -127,9 +132,17 @@ func (d *Database) TableColumn(db *sql.DB, dbName string, exclude map[string]int
 	d.Tables = make(map[string][]Column)
 	for rows.Next() {
 		rows.Scan(&name, &comment, &column.Name, &column.Type, &column.Comment)
-		if _, ok := exclude[name]; ok {
-			continue
+		// 如果有 include 则生成 include 包含的表，如果没有 include 则生成 exclude 不包含的表
+		if len(include) != 0 {
+			if _, ok := include[name]; !ok {
+				continue
+			}
+		} else {
+			if _, ok := exclude[name]; ok {
+				continue
+			}
 		}
+
 		if _, ok := d.Comments[name]; !ok {
 			d.Comments[name] = comment
 		}
