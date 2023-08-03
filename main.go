@@ -33,12 +33,14 @@ func main() {
 	}
 
 	// 需要生成的表
-	include := map[string]int{
-		"test": 1,
+	include := map[string]struct{}{
+		"test": {},
 	}
 
 	// 不需要生成的表
-	exclude := map[string]int{"log": 1}
+	exclude := map[string]struct{}{
+		"test": {},
+	}
 
 	// 初始化表
 	d := Database{}
@@ -118,7 +120,7 @@ func main() {
 }
 
 // TableColumn 获取表信息
-func (d *Database) TableColumn(db *sql.DB, dbName string, include, exclude map[string]int) {
+func (d *Database) TableColumn(db *sql.DB, dbName string, include, exclude map[string]struct{}) {
 	rows, err := db.Query("SELECT t.TABLE_NAME,t.TABLE_COMMENT,c.COLUMN_NAME,c.COLUMN_TYPE,c.COLUMN_COMMENT FROM information_schema.TABLES t,INFORMATION_SCHEMA.Columns c WHERE c.TABLE_NAME=t.TABLE_NAME AND t.`TABLE_SCHEMA`='" + dbName + "'")
 	defer db.Close()
 	defer rows.Close()
