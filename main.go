@@ -34,80 +34,16 @@ func main() {
 
 	// 需要生成的表
 	include := map[string]struct{}{
-		"test": {},
+		// "user1": {},
 	}
 
-	// 不需要生成的表
+	// 不需要生成的表，需要生成的表为空时生效
 	exclude := map[string]struct{}{
 		"test": {},
 	}
 
 	// 初始化表
 	d := Database{}
-
-	// 配置生成的 message
-	d.Details = map[string]Detail{
-		"Filter": {
-			Name:     "Filter",
-			Category: "custom",
-			Attributes: []Attribute{
-				{
-					Type: "string", // 类型
-					Name: "id",     // 字段
-				},
-			},
-		},
-		"Page": {
-			Name:     "Page",
-			Category: "custom",
-			Attributes: []Attribute{
-				{
-					Type:    "int64", // 类型
-					Name:    "page",  // 字段
-					Comment: "第几页",
-				},
-				{
-					Type:    "int64",
-					Name:    "page_size",
-					Comment: "每页数量",
-				},
-			},
-		},
-		"Request": {
-			Name:     "Request",
-			Category: "all",
-		},
-		"Response": {
-			Name:     "Response",
-			Category: "custom",
-			Attributes: []Attribute{
-				{
-					Type:    "int32",
-					Name:    "code",
-					Comment: "错误码",
-				},
-				{
-					Type:    "string",
-					Name:    "message",
-					Comment: "错误信息",
-				},
-				{
-					Type:    "string",
-					Name:    "data",
-					Comment: "返回值，使用前将类型改成 any",
-				},
-			},
-		},
-	}
-
-	// 配置服务中的 RPC 方法
-	d.Actions = map[string]Action{
-		"Create": {Request: d.Details["Request"], Response: d.Details["Response"]},
-		"List":   {Request: d.Details["Page"], Response: d.Details["Response"]},
-		"Get":    {Request: d.Details["Filter"], Response: d.Details["Response"]},
-		"Update": {Request: d.Details["Request"], Response: d.Details["Response"]},
-		"Delete": {Request: d.Details["Filter"], Response: d.Details["Response"]},
-	}
 
 	// 生成的包名
 	d.Name = dbName
@@ -119,7 +55,7 @@ func main() {
 	d.Generate(file, tpl)
 }
 
-// TableColumn 获取表信息
+// 获取表信息
 func (d *Database) TableColumn(db *sql.DB, dbName string, include, exclude map[string]struct{}) {
 	rows, err := db.Query("SELECT t.TABLE_NAME,t.TABLE_COMMENT,c.COLUMN_NAME,c.COLUMN_TYPE,c.COLUMN_COMMENT FROM information_schema.TABLES t,INFORMATION_SCHEMA.Columns c WHERE c.TABLE_NAME=t.TABLE_NAME AND t.`TABLE_SCHEMA`='" + dbName + "'")
 	defer db.Close()
@@ -166,13 +102,14 @@ func (d *Database) TableColumn(db *sql.DB, dbName string, include, exclude map[s
 	}
 }
 
-// Generate 生成文件
+// 生成文件
 func (d *Database) Generate(filepath, tpl string) {
 	protoBuff := ProtoBuff{Package: d.Name}
 	for tableName := range d.Comments {
-		service := Service{Name: UpperCamel(tableName)}
-		service.HandleFuncs(d.Actions, tableName)
-		service.HandleMessage(d.Details, tableName, d.Tables[tableName])
+		camelTableName := UpperCamel(tableName)
+		service := Service{Name: camelTableName}
+		service.HandleFunction(camelTableName)
+		service.HandleMessage(camelTableName, d.Tables[tableName])
 		protoBuff.Services = append(protoBuff.Services, service)
 	}
 
@@ -193,6 +130,7 @@ func (d *Database) Generate(filepath, tpl string) {
 	}
 }
 
+// 连接数据库
 func Connect(driverName, dsn string) (*sql.DB, error) {
 	db, err := sql.Open(driverName, dsn)
 
@@ -207,144 +145,73 @@ func Connect(driverName, dsn string) (*sql.DB, error) {
 	return db, err
 }
 
-func (s *Service) HandleFuncs(actions map[string]Action, key string) {
-	k := UpperCamel(key)
-	for n, m := range actions {
-		var funcParam Function
-		funcParam.Name = n + k
-		funcParam.Path = Kebab(k)
-		funcParam.Method = FunctionMethod(strings.ToUpper(n))
-		funcParam.ResponseName = k + m.Response.Name
-		funcParam.RequestName = k + m.Request.Name
-
-		// 特殊处理 url
-		if n == "List" {
-			funcParam.Path = Kebab(k) + "/list"
-		}
-
-		s.Functions = append(s.Functions, funcParam)
-	}
+// 处理函数
+func (s *Service) HandleFunction(tableName string) {
+	var function Function
+	function.Name = tableName
+	function.Path = Kebab(tableName)
+	function.Method = "patch"
+	function.ResponseName = tableName + "Request"
+	function.RequestName = tableName + "Request"
+	s.Function = function
 }
 
-func (s *Service) HandleMessage(details map[string]Detail, key string, columns []Column) {
+// 处理 message
+func (s *Service) HandleMessage(tableName string, columns []Column) {
 	var message Message
-	k := UpperCamel(key)
-
-	for name, detail := range details {
-		message.Name = k + name
-
-		// 这里必须清空一下
-		message.Detail = nil
-
-		// 处理数据表全部列消息体
-		if detail.Category == "all" {
-			for i, f := range columns {
-				var field Field
-				field.Name = f.Name
-				field.Type = TypeMToP(f.Type)
-				field.Num = i + 1
-				if f.Type == "blob" {
-					if f.Comment != "" {
-						field.Type = "string"
-						field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String" + f.Comment
-					} else {
-						field.Type = "string"
-						field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String"
-					}
-				} else {
-					if f.Comment != "" {
-						field.Comment = "; // " + f.Comment
-					} else {
-						field.Comment = ";"
-					}
-				}
-				message.Detail = append(message.Detail, field)
+	for i, f := range columns {
+		var field Field
+		field.Name = f.Name
+		field.Type = TypeSqlToPb(f.Type)
+		field.Num = i + 1
+		if f.Type == "blob" {
+			if f.Comment != "" {
+				field.Type = "string"
+				field.Comment = "; // 使用时要转成 []byte" + f.Comment
+			} else {
+				field.Type = "string"
+				field.Comment = "; // 使用时要转成 []byte"
 			}
-		} else if detail.Category == "custom" {
-			// 处理自定义消息体
-			for i, f := range detail.Attributes {
-				var field Field
-				field.Type = f.Type
-				field.Name = f.Name
-				field.Num = i + 1
-				if f.Type == "blob" {
-					if f.Comment != "" {
-						field.Type = "string"
-						field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String，" + f.Comment
-					} else {
-						field.Type = "string"
-						field.Comment = "; // 用的时候要转成byte[] Convert.FromBase64String"
-					}
-				} else {
-					if f.Comment != "" {
-						field.Comment = "; // " + f.Comment
-					} else {
-						field.Comment = ";"
-					}
-				}
-				message.Detail = append(message.Detail, field)
+		} else {
+			if f.Comment != "" {
+				field.Comment = "; // " + f.Comment
+			} else {
+				field.Comment = ";"
 			}
 		}
-		s.Messages = append(s.Messages, message)
+		message.Name = tableName + "Request"
+		message.Fields = append(message.Fields, field)
 	}
-}
-
-// 获取方法的请求方式
-func FunctionMethod(function string) string {
-	getKeys := []string{"GET", "FIND", "QUERY", "LIST", "SEARCH"}
-	postKeys := []string{"POST", "CREATE"}
-	putKeys := []string{"PUT", "UPDATE"}
-	deleteKeys := []string{"DELETE", "REMOVE"}
-	if sliceContains(getKeys, function) {
-		return "get"
-	} else if sliceContains(postKeys, function) {
-		return "post"
-	} else if sliceContains(putKeys, function) {
-		return "put"
-	} else if sliceContains(deleteKeys, function) {
-		return "delete"
-	}
-	return "post"
-}
-
-// 判断切片是否包含
-func sliceContains(s []string, str string) bool {
-	for index := range s {
-		if s[index] == str {
-			return true
-		}
-	}
-	return false
+	s.Message = message
 }
 
 // MySQL 类型转 PB 类型
-func TypeMToP(m string) string {
+func TypeSqlToPb(m string) string {
 	if _, ok := typeArr[m]; ok {
 		return typeArr[m]
 	}
 	return "string"
 }
 
-// MySQL 类型和 PB 类型映射表
 var typeArr = map[string]string{
-	"int":       "int32",
+	"varchar":   "string",
+	"text":      "string",
+	"enum":      "int32",
 	"tinyint":   "int32",
 	"smallint":  "int32",
 	"mediumint": "int32",
-	"enum":      "int32",
+	"int":       "int32",
 	"bigint":    "int64",
-	"varchar":   "string",
-	"timestamp": "string",
-	"date":      "string",
-	"text":      "string",
+	"float":     "float",
 	"double":    "double",
 	"decimal":   "double",
-	"float":     "float",
+	"timestamp": "string",
+	"date":      "string",
 	"datetime":  "string",
 	"blob":      "blob",
 }
 
-// 大驼峰
+// 下划线转大驼峰
 func UpperCamel(str string) string {
 	temp := strings.Split(str, "_")
 	var upperStr string
@@ -357,7 +224,7 @@ func UpperCamel(str string) string {
 	return upperStr
 }
 
-// 横杠分割
+// 大驼峰转横杠分割
 func Kebab(str string) string {
 	var result strings.Builder
 	for i, char := range str {
@@ -369,6 +236,7 @@ func Kebab(str string) string {
 	return result.String()
 }
 
+// 判断文件是否存在
 func IsFile(f string) bool {
 	fi, e := os.Stat(f)
 	if e != nil {
@@ -379,10 +247,8 @@ func IsFile(f string) bool {
 
 type Database struct {
 	Name     string
-	Actions  map[string]Action
 	Comments map[string]string
 	Tables   map[string][]Column
-	Details  map[string]Detail
 }
 
 type Action struct {
@@ -401,9 +267,9 @@ type ProtoBuff struct {
 }
 
 type Service struct {
-	Name      string
-	Functions []Function
-	Messages  []Message
+	Name     string
+	Function Function
+	Message  Message
 }
 
 type Function struct {
@@ -416,7 +282,7 @@ type Function struct {
 
 type Message struct {
 	Name   string
-	Detail []Field
+	Fields []Field
 }
 
 type Field struct {
