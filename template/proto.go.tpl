@@ -10,7 +10,7 @@ option go_package = "/{{.Package}}";
 service {{.Name}} {
  {{range .Functions}} rpc {{.Name}}({{.RequestName}}) returns ({{.ResponseName}}) {
     option (google.api.http) = {
-		{{.Method}}: "/v1/{{.Path}}"
+		{{.Method}}: "/{{.Path}}"
 	};
 
  }
