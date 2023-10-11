@@ -8,17 +8,14 @@ option go_package = "/{{.Package}}";
 {{range .Services}}
 // The {{.Name}} service definition.
 service {{.Name}} {
- {{range .Functions}} rpc {{.Name}}({{.RequestName}}) returns ({{.ResponseName}}) {
-    option (google.api.http) = {
-		{{.Method}}: "/{{.Path}}"
-	};
-
- }
- {{end}}
+	rpc {{.Function.Name}}({{.Function.RequestName}}) returns ({{.Function.ResponseName}}) {
+		option (google.api.http) = {
+			{{.Function.Method}}: "/{{.Function.Path}}"
+		};
+	}
 }
-{{range .Messages}}
-message {{.Name}} {
-{{range .Detail}} {{.Type}} {{.Name}} = {{.Num}}{{.Comment}}
+
+message {{.Message.Name}} {
+{{range .Message.Fields}} {{.Type}} {{.Name}} = {{.Num}}{{.Comment}}
 {{end}}}
-{{end}}
 {{end}}
